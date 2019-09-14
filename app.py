@@ -5,50 +5,72 @@ as well as to practice webscraping and RegEx in Python."""
 
 import requests
 from bs4 import BeautifulSoup
+from animal import Animal
 import re
 import time
 import sys
 
-html = requests.get("https://en.wikipedia.org/wiki/Fauna_of_Ireland").content
-soup = BeautifulSoup(html, features="html.parser")
-
-# Main index page of all wildlife found in Ireland
-listPattern = re.compile(r'\w*list\w*ireland$', re.I)
 base_url = "https://en.wikipedia.org"
-list_of_links = []
+generic_species_links = []
+specific_species_links = []
 
-for link in soup.find_all("a"):
-    linkStub = link.get('href')
-    if linkStub is not None:
-        match = listPattern.search(linkStub)
+def get_generic_species():
+    html = requests.get("https://en.wikipedia.org/wiki/Fauna_of_Ireland").content
+    soup = BeautifulSoup(html, features="html.parser")
 
-        if match and list_of_links.count(linkStub) == 0:
-            list_of_links.append(link.get('href'))
+    # Main index page of all wildlife found in Ireland
+    listPattern = re.compile(r'\w*list\w*ireland$', re.I)
 
+    for link in soup.find_all("a"):
+        linkStub = link.get('href')
+        if linkStub is not None:
+            match = listPattern.search(linkStub)
 
-sub_list_pattern = re.compile(r"/wiki/(?!\w*Template)\w*$")
+            if match and linkStub not in generic_species_links:
+                generic_species_links.append(linkStub)
 
-# Each link is a list of that specific category of animal
-for linkStub in list_of_links:
-    page_html = requests.get(base_url + linkStub).content
-    soup = BeautifulSoup(page_html, features="html.parser")
-    print(soup.h1.text)
-    # removes table of contents and navboxes from soup
-    unwanted = soup.findAll(class_=["toc", "selected", "navbox", "portal"])
-    for item in unwanted:
-        item.extract()
+def get_specific_species():
+    sub_list_pattern = re.compile(r"/wiki/(?!\w*Template)(?!\w*List)\w*$", re.I)
 
-    # get all sub-lists
-    for unordered_list in soup.find_all("ul"):
-        anchors = unordered_list.find_all('a')
-        for anchor in anchors:
-                linkStub = anchor.get("href")
-                if linkStub is not None:
-                    match = sub_list_pattern.match(linkStub)
-                    if match:
-                        print(linkStub)
-    # print(group)
+    # Each link is a list of that specific category of animal
+    for linkStub in generic_species_links:
+        page_html = requests.get(base_url + linkStub).content
+        soup = BeautifulSoup(page_html, features="html.parser")
+        # print("\n" + soup.h1.text)
+        # removes table of contents and navboxes from soup
+        unwanted = soup.findAll(class_=["toc", "selected", "navbox", "portal"])
+        for item in unwanted:
+            item.extract()
 
-    # sys.exit()
-    time.sleep(1)    # wikipedia asks that webscrapers only request pages once a second
+        # get all sub-lists
+        for unordered_list in soup.find_all("ul"):
+            anchors = unordered_list.find_all('a')
+            for anchor in anchors:
+                    linkStub = anchor.get("href")
+                    if linkStub is not None:
+                        match = sub_list_pattern.match(linkStub)
+                        if match and linkStub not in specific_species_links:
+                            specific_species_links.append(linkStub)
+                            # print(linkStub)
+        time.sleep(1)    # wikipedia asks that webscrapers only request pages once a second
 
+def get_info():
+    # get name, description and image for each animal
+    for linkStub in specific_species_links:
+        html = requests.get(base_url + linkStub)
+        description = html.text.split("Contents")
+        soup = BeautifulSoup(description[0], features="html.parser") # [0] is first half before table of contents
+        info_box = soup.find(class_="infobox")
+        unwanted = info_box.findAll(name="p")
+
+        for item in unwanted:
+            item.extract()
+
+        for paragraph in soup.findAll("p"):
+            print(paragraph.text)
+
+        time.sleep(1)
+
+get_generic_species()
+get_specific_species()
+get_info()
